@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-wolfram-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Detect the local Wolfram installation, register its MCP server from a persisted kernel-generated configuration, and manage Wolfram agent skills.",

@@ -13,6 +13,16 @@
 5. Settings → **Wolfram MCP** 页面展示当前持久化的配置 JSON（只读）与 MCP 连接状态；点击 **重新获取配置** 可手动运行一次 `wolframscript` 并替换配置。
 6. 禁用或卸载插件时，插件注册的 MCP 服务器与其工具被撤除，四个 skill 副本也被移除。持久化状态文件保留，重新启用时直接读取，不会再次自动运行 kernel。
 
+### 初始化进度 Toast
+
+首次启用后，DSH 页面底部会出现一条**常驻 Toast**，不自动消失：
+
+- 扫描 Wolfram 安装并获取 MCP 配置时显示“正在检测 Wolfram 安装并获取 MCP 配置…”；
+- 首次启动 Wolfram MCP、下载/加载数据时显示“Wolfram MCP 首次启动，正在下载/加载数据，可能需要数分钟…”；
+- Host 确认 MCP 首次连接成功后，Toast 自动撤销。
+
+该 Toast 是全局 `shell.overlay` 入口，不依赖 Settings 页面是否打开；刷新浏览器后如果 Host 仍处于初始化阶段，它会重新出现。初始化失败时 Toast 消失（避免一直显示“正在加载”），详细错误保留在 Settings → Wolfram MCP 页面。
+
 > 首次启用时后台生成约需 25 秒；首次启动 MCP 服务器还可能下载/加载 Wolfram 内容，工具出现时间会更晚。页面会显示 `refreshing` 与 MCP 连接状态。
 
 ## 工作原理
@@ -66,10 +76,23 @@ $DSH_HOME/dsh-wolfram-mcp/state.json
 
 - Client 通过 `settings.section` 注册 `id: wolfram-mcp` 页面，并在 `settings.section.icon` 注册同 id 的导航图标。
 - Host 提供 owner-only HTTP API：
-  - `GET /dsh-wolfram-mcp/api/state`：返回配置、时间、路径、`refreshing`、`persisted`、MCP 状态与 Skills 复制结果。
+  - `GET /dsh-wolfram-mcp/api/state`：返回配置、时间、路径、`refreshing`、`persisted`、`mcpReadyAt`、`phase`、MCP 状态与 Skills 复制结果。
   - `POST /dsh-wolfram-mcp/api/refresh`：串行触发一次生成；并发请求复用同一操作。
 - 页面每 3 秒轮询一次状态，以覆盖首次后台生成与 MCP 连接状态变化；组件卸载时清除定时器。
 - 页面文本走 Client `ctx.locale` 字典（中文/英文），样式只使用 `--dsw-alias-*` 主题 token。
+
+### 初始化 Toast
+
+- DSH 没有通用的“常驻 Toast 服务”；Client `Service` 目录只有 `layout`、`locale`、`sessions`、`slots`、`theme`、`timer`、`uiWorkspace`、`workspaces`。
+- 内置的 `Toast` 组件是 `dsh-client-ui-primitives` 的内部瞬态控件（`holdMs`/`onDone`），且 `dsh-doc` 禁止插件直接 require 内部 Client 包。
+- 本插件使用 DSH 明确支持的 `shell.overlay` 通用浮层槽位（`id: wolfram-mcp.status-toast`），自建无定时器的 Toast；它读取 Host 快照中的 `phase`：
+  - `fetching`：扫描/获取配置；
+  - `mcp-starting`：首次 MCP 启动/下载数据；
+  - `ready` / `error` / `idle`：不显示。
+- Host 通过 `mcp-manager/status` 事件和 `/state` 快照补写 `mcpReadyAt`（首次 connected 时间）；该标记持久化到状态文件，因此首次连接完成后不会再出现首次启动提示。
+- Toast 使用 `pointer-events: none`，不阻塞页面；`role="status"`、`aria-live="polite"`。
+- 失败时隐藏 Toast（避免永久“正在加载”），错误详情在 Settings 页面展示。
+- 首次连接完成后 `mcpReadyAt` 会写入状态文件，之后重新启用不会再次显示“首次启动”提示。要重新观察完整流程，可删除 `~/.dsh/dsh-wolfram-mcp/state.json` 后重新启用；手动点击“重新获取配置”会显示扫描阶段提示。
 
 ## 依赖与构建
 

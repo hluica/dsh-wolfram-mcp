@@ -342,3 +342,113 @@ src/wolframlanguage_mcp.json 测试夹具（运行时不用）
 - 若运行时验证必须重启 DSH，按 `AGENTS.md` 4.2 处理；本轮已通过 live profile 安装并观察到 Host/Client 两侧生效。
 - 禁用/重新启用仍需实测确认 MCP 工具撤除、Skills 撤除、状态文件保留且不重新生成；将在首次连接完成后补做。
 
+
+# 初始化阶段常驻 Toast 通知
+
+## 2026-11-18 扫描、获取配置与首次 MCP 下载期间的常驻提示
+
+### 目的与范围
+
+在插件安装并启用后的以下长耗时阶段，向用户显示一条**常驻 Toast**：
+
+1. 自动扫描 Wolfram 安装、运行 `wolframscript` 并获取 MCP 配置；
+2. 首次注册 MCP 服务器后，Wolfram MCP 进程下载/加载 Chatbook 向量数据库等数据的阶段。
+
+Toast 在阶段进行期间一直显示，不做自动消失；当 Host 确认 MCP 连接成功（首次连接完成）后，由 Client 主动撤销。失败时不保留一条误导性的“正在加载”提示，改为不显示（详细错误留在 Settings → Wolfram MCP 页面）。
+
+范围仅限本插件的初始化提示；不改变 DSH 其他通知，不增加全局通知服务，不引入新的 npm 依赖。
+
+### 可行性
+
+#### DSH 内置通知能力调查
+
+- **没有通用的全局 Toast 服务**：`cordis_inspect_query` 的 Client `Service.listService` 只返回 `layout`、`locale`、`sessions`、`slots`、`theme`、`timer`、`uiWorkspace`、`workspaces`，不存在 `toast`/`notification`/`notice` 服务。
+- **`workspace.toast` 不是通用入口**：它是 keyed 槽位，key 域固定为 Workspace 的 `RowToastState['kind']`（`archivedNotOpenable`、`createFailed`、`pinned` 等），由 Workspace 自己的状态驱动；第三方不能用它注入自定义通知。
+- **内置 Toast 是各功能自建的局部状态**：`dsh-client-ui-open-in-app` 的 `open-in-app.toast`、`dsh-client-ui-schedule` 的 `schedule.delete-toast` 都各自创建 store，再注册到 `shell.overlay`；渲染使用 `@deepseek-ai/dsh-client-ui-primitives` 的 `Toast` 组件。该组件接受 `holdMs` 与 `onDone`，是定时消失的瞬态展示，没有“常驻直到外部条件满足”的契约。
+- **`dsh-doc` 明确禁止直接 require 内部 Client 包**（包括 `dsh-client-ui-primitives`）：`references/practices.md` 要求复制其 markup/CSS 并写自己的控件；因此不能把内部 `Toast` 当稳定 API 使用。
+- **受支持的通用扩展点是 `shell.overlay`**：`Slots.listSubTree({ root: 'shell.overlay' })` 的 catalog 明确写着该槽位“Deliberately generic and unowned by any feature: a badge, a toast stack or a status pill all belong here… additive seat for a frame-wide surface of your own”，且 registration 只需 `id`/`order`/`label`。现有 `open-in-app.toast`、`schedule.delete-toast`、`workspace.row-toast` 都注册在这里。
+- **Host 侧状态事件可用**：`Event.listEvents` 确认 `mcp-manager/status(name, status)` 是 parallel 事件，`status.state === 'connected'` 表示 MCP 已连接；现有 `/dsh-wolfram-mcp/api/state` 已能返回 MCP 状态。
+
+结论：DSH 没有“常驻 Toast 服务”，但 `shell.overlay` 是官方支持的框架级浮层入口。实现一个自有的、无定时器、由 Host 阶段状态驱动的 overlay Toast，即可满足需求；不需要也不应该依赖内部 `Toast` 组件。
+
+### 核心进路
+
+**Host：新增首次连接标记与阶段字段**
+
+- `state.json` 增加 `mcpReadyAt`（ISO 字符串或 null），表示本插件首次确认 MCP 连接成功的时间；旧状态文件缺少该字段时归一化为 null。
+- `lib/runtime.js`：
+  - `start()` 在应用持久化配置前注册 `ctx.on('mcp-manager/status', (name, status) => …)`；当 `name` 属于本插件注册、且 `status.state === 'connected'` 时，写入 `mcpReadyAt` 并持久化。
+  - `snapshot()` 在 `mcpServers` 中若发现 `connected`，也补写 `mcpReadyAt`，覆盖事件早于监听器/漏发的情况。
+  - `snapshot()` 增加 `phase`：
+    - `fetching`：`refreshing` 为真（扫描/生成配置）；
+    - `mcp-starting`：`mcpReadyAt` 为 null，且 MCP 状态为 `connecting`/`reconnecting`/`waiting-credentials`，或注册已存在但状态尚未发布；
+    - `error`：`mcpReadyAt` 为 null，且存在 `lastError`、`failed` 状态或注册错误；
+    - `ready`：`mcpReadyAt` 非 null；
+    - `idle`：尚未开始初始化。
+  - `snapshot()` 额外返回 `mcpReadyAt` 与 `phase`。
+- 不改变现有 `refreshing`、`lastError`、MCP 状态的语义；设置页仍可用这些字段。
+
+**Client：`shell.overlay` 常驻 Toast**
+
+- 在 `client.js` 注册 `id: 'wolfram-mcp.status-toast'` 的 `shell.overlay` 条目（`order: 100`），组件每 2 秒读取一次 `/state`。
+- 组件不设置任何 dismiss 定时器：
+  - `phase === 'fetching'` → 显示“正在检测 Wolfram 安装并获取 MCP 配置，首次可能需要一些时间…”；
+  - `phase === 'mcp-starting'` → 显示“Wolfram MCP 首次启动，正在下载/加载数据，可能需要数分钟。完成后此提示会自动消失。”；
+  - `phase === 'ready'` / `'error'` / `'idle'` → 返回 null，Toast 消失。
+- 初次安装时两个阶段连续显示同一条 Toast，文本从扫描切换到首次启动；MCP 连接成功后由阶段变化主动撤销。
+- 失败时隐藏加载 Toast（不显示永久“正在加载”），详细错误继续由 Settings 页面展示。
+- Toast 样式按 `dsh-doc` 的 UI 规则自建，使用 `--dsw-alias-toast-bg`、`--dsw-alias-border-l1`、`--dsw-alias-brand-primary` 等主题 token；`pointer-events: none`，不阻塞页面；`role="status"`、`aria-live="polite"`。文本走现有 `ctx.locale` 字典。
+- 刷新浏览器页面时 overlay 重新挂载并轮询；若 Host 仍处于 `fetching`/`mcp-starting`，Toast 会重新出现，符合“常驻到完成”的语义。
+
+**备选与不采用**
+
+- **复用 `workspace.toast`**：key 域固定为 Workspace 通知，无法注入本插件状态；不采用。
+- **直接 require `Toast` primitive**：`dsh-doc` 明确禁止；内部组件的 `holdMs`/`onDone` 是瞬态契约，也不能表达“常驻直到 Host 确认”；不采用。
+- **Electron 原生通知**：不在页面内、受系统权限影响，且不能表达“完成前常驻”；不采用。
+- **新增全局通知服务**：超出本插件范围，会与 DSH 现有 UI 契约冲突；不采用。
+
+### 问题与解决办法
+
+| 问题 | 处理 |
+|---|---|
+| 首次连接事件早于监听器注册 | `start()` 在 `applyConfig` 前注册监听；`snapshot()` 另外检查 `connected` 并补写 `mcpReadyAt` |
+| Host 已有连接但事件漏发 | 每次 `/state` 快照检查 `mcpManager.list()` 的 `connected`，补写并持久化 |
+| 首次启动失败，Toast 永久显示“正在加载” | `phase` 变 `error` 时 overlay 返回 null；详细错误在设置页展示 |
+| 浏览器刷新/重新打开页面 | overlay 挂载后重新轮询 `/state`，按当前 phase 恢复显示或隐藏 |
+| 与设置页重复轮询 | 2 秒一次的本机 `/state` 请求成本很低；保持设置页现有 3 秒轮询，不重构其数据流，降低回归风险 |
+| Toast 遮挡交互 | `pointer-events: none`；仅显示信息，不提供按钮 |
+| 视觉与内置 Toast 不一致 | 复制现有 toast 的视觉语言（底部居中、圆角、细边框、主题 token）；不 require 内部组件 |
+| 首次安装已完成但用户后打开页面 | Host 已持久化 `mcpReadyAt`，`phase: ready`，不显示 Toast |
+| 升级后旧状态文件没有 `mcpReadyAt` | `normalizeState` 归一化为 null；下一次成功连接后补写 |
+| 首次下载耗时超过 `startupTimeoutMs` | mcp-client 的重连会继续；`mcpReadyAt` 只在真正 connected 后写入，Toast 保持到成功或失败 |
+
+### 实施与验证计划
+
+1. Host：扩展状态 schema、事件监听、phase 计算；补充单元/集成测试（connected → `mcpReadyAt`、connecting → `mcp-starting`、refreshing → `fetching`、失败 → `error`）。
+2. Client：新增 overlay 组件、样式、字典键；`npm run build` 检查解析与清单。
+3. 重新启用插件让 link 代码生效；确认：
+   - 首次阶段出现常驻 Toast（可用删除 `state.json` 后重新启用模拟首次安装）；
+   - MCP 连接成功后 Toast 自动消失；
+   - 浏览器刷新后按当前 phase 恢复；
+   - Settings 页面与已有 MCP 功能不回归。
+4. 更新 README 与版本（0.1.1），提交本地 Git。
+
+### 实施记录（阶段二）
+
+- 版本提升到 `0.1.1`（`package.json` 与 `PLUGIN_VERSION`）。
+- Host：
+  - `state.json` 新增 `mcpReadyAt`；旧状态文件缺少该字段时归一化为 null。
+  - `lib/runtime.js` 在 `start()` 中于应用配置前注册 `ctx.on('mcp-manager/status', …)`，首次 `connected` 时写入 `mcpReadyAt` 并持久化；`snapshot()` 也会检查 `mcpManager.list()` 的 `connected` 状态补写，覆盖漏发事件。
+  - `snapshot()` 返回 `mcpReadyAt` 与 `phase`：`fetching` / `mcp-starting` / `error` / `ready` / `idle`。
+- Client：
+  - `client.js` 新增 `WolframMcpStatusToast`，注册到 `shell.overlay`，`id: wolfram-mcp.status-toast`、`order: 100`，每 2 秒读取 `/state`。
+  - 无 `setTimeout`/自动消失逻辑；仅当 `phase` 为 `fetching` 或 `mcp-starting` 时渲染，阶段变化后返回 null。
+  - Toast 使用底部居中圆角浮层、主题 token、旋转 spinner；`pointer-events: none`，`role="status"` 与 `aria-live="polite"`。
+  - 字典新增 `toast.scanning` 与 `toast.mcpStarting` 的中英文文本。
+- 测试：24 个测试全部通过。新增覆盖：`mcp-starting → connected` 事件将 `mcpReadyAt` 置位、`refreshing` 时 `phase=fetching`、失败状态 `phase=error`。
+- `npm run build` 全部检查通过。
+- 重新启用 live 插件后：
+  - `Slots.listSubTree({ root: 'shell.overlay' })` 显示 `wolfram-mcp.status-toast`、`order: 100`、`active: true`。
+  - 重新连接后 `state.json` 写入 `mcpReadyAt: "2026-11-18T12:20:07.478Z"`；`list_mcp_resources` 返回 `WolframLanguage` 且 MCP 工具列表恢复。
+  - 首次启动 Toast 在本次重启用中会出现一个短暂阶段（数据已缓存）；完整的长阶段提示需要删除 `state.json` 或全新安装后观察。
+- 限制：没有浏览器截图工具，Toast 的像素级位置/视觉未由我直接验收；Slot 注册、phase 状态与构建检查已确认。可请用户在全新安装或手动刷新时观察。

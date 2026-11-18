@@ -17,6 +17,8 @@ function makeContext(overrides = {}) {
   const registered = new Map()
   const effects = []
   const routes = []
+  const listeners = new Map()
+  const statusRef = { current: { state: 'connected', toolCount: 7, connectedAt: 1 } }
   const ctx = {
     logger: { debug() {}, info() {}, warn() {}, error() {} },
     mcpManager: {
@@ -28,7 +30,7 @@ function makeContext(overrides = {}) {
         return [...registered.keys()].map((name) => ({
           name,
           configured: false,
-          status: { state: 'connected', toolCount: 7, connectedAt: 1 },
+          status: statusRef.current,
         }))
       },
     },
@@ -43,6 +45,10 @@ function makeContext(overrides = {}) {
         return { peer: { principal: { kind: 'owner' } } }
       },
     },
+    on(event, listener) {
+      listeners.set(event, listener)
+      return () => listeners.delete(event)
+    },
     effect(callback) {
       const cleanup = callback()
       effects.push(cleanup)
@@ -51,7 +57,7 @@ function makeContext(overrides = {}) {
       }
     },
   }
-  return { ctx: { ...ctx, ...overrides }, registered, effects, routes }
+  return { ctx: { ...ctx, ...overrides }, registered, effects, routes, listeners, statusRef }
 }
 
 function fakeResponse() {
@@ -118,6 +124,8 @@ test('registers the persisted configuration, serves state, and removes its own c
     assert.equal(payload.result.config.mcpServers.WolframLanguage.command, command)
     assert.equal(payload.result.mcpServers[0].status.toolCount, 7)
     assert.equal(payload.result.persisted, true)
+    assert.equal(payload.result.phase, 'ready')
+    assert.equal(typeof payload.result.mcpReadyAt, 'string')
 
     runtime.performRefresh = async () => ({ ok: true })
     const refreshed = fakeResponse()
@@ -142,6 +150,72 @@ test('registers the persisted configuration, serves state, and removes its own c
   }
 })
 
+test('reports mcp-starting until the manager emits a connected status', () => {
+  const home = mkdtempSync(join(tmpdir(), 'dwm-runtime-'))
+  try {
+    const statePath = join(home, 'dsh-wolfram-mcp', 'state.json')
+    const skillsRoot = join(home, 'skills')
+    writeStateAtomic(statePath, {
+      ...defaultState(),
+      config: {
+        mcpServers: {
+          WolframLanguage: {
+            type: 'stdio',
+            command: '/usr/bin/true',
+            args: [],
+            env: {},
+          },
+        },
+      },
+      fetchedAt: '2026-11-18T00:00:00.000Z',
+      lastAttemptAt: '2026-11-18T00:00:00.000Z',
+      lastSource: 'initial',
+    })
+    const { ctx, listeners, statusRef } = makeContext()
+    statusRef.current = { state: 'connecting', attempt: 1 }
+    const runtime = new WolframMcpRuntime(ctx, { env: {}, statePath, skillsRoot, skillsSource })
+    runtime.start()
+
+    assert.equal(runtime.snapshot().phase, 'mcp-starting')
+    assert.equal(runtime.snapshot().mcpReadyAt, null)
+
+    const listener = listeners.get('mcp-manager/status')
+    assert.equal(typeof listener, 'function')
+    listener('WolframLanguage', { state: 'connected', toolCount: 7, connectedAt: 1 })
+
+    const snapshot = runtime.snapshot()
+    assert.equal(snapshot.phase, 'ready')
+    assert.equal(typeof snapshot.mcpReadyAt, 'string')
+    runtime.dispose()
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('reports error when the last fetch failed and no configuration exists', () => {
+  const home = mkdtempSync(join(tmpdir(), 'dwm-runtime-'))
+  try {
+    const statePath = join(home, 'dsh-wolfram-mcp', 'state.json')
+    writeStateAtomic(statePath, {
+      ...defaultState(),
+      lastAttemptAt: '2026-11-18T00:00:00.000Z',
+      lastError: 'wolframscript not found',
+    })
+    const { ctx } = makeContext()
+    const runtime = new WolframMcpRuntime(ctx, {
+      env: {},
+      statePath,
+      skillsRoot: join(home, 'skills'),
+      skillsSource,
+    })
+    runtime.start()
+    assert.equal(runtime.snapshot().phase, 'error')
+    runtime.dispose()
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
 test('shares one refresh promise and clears the refreshing flag', async () => {
   const home = mkdtempSync(join(tmpdir(), 'dwm-runtime-'))
   try {
@@ -159,6 +233,7 @@ test('shares one refresh promise and clears the refreshing flag', async () => {
     const second = runtime.refresh('manual')
     assert.equal(first, second)
     assert.equal(runtime.refreshing, true)
+    assert.equal(runtime.snapshot().phase, 'fetching')
     gates[0]({ ok: true })
     await first
     assert.equal(runtime.refreshing, false)

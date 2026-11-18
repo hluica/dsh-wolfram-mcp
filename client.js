@@ -65,6 +65,8 @@ window.__ModuleLoader__.load({
       registrationErrors: '注册错误',
       requestFailed: '请求失败',
       loading: '正在读取状态…',
+      'toast.scanning': '正在检测 Wolfram 安装并获取 MCP 配置。首次运行可能需要一些时间，请稍候…',
+      'toast.mcpStarting': 'Wolfram MCP 首次启动，正在下载/加载数据，可能需要数分钟。完成后此提示会自动消失。',
     }
 
     const en = {
@@ -113,6 +115,8 @@ window.__ModuleLoader__.load({
       registrationErrors: 'Registration errors',
       requestFailed: 'Request failed',
       loading: 'Reading state…',
+      'toast.scanning': 'Detecting the Wolfram installation and fetching the MCP configuration. This may take a while on first run…',
+      'toast.mcpStarting': 'Wolfram MCP is starting for the first time and downloading/loading data. This may take several minutes; the notice disappears when it is ready.',
     }
 
     /**
@@ -375,6 +379,58 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * Persistent initialization notice shown in the frame-wide overlay.
+     *
+     * The component owns no dismiss timer: it polls the owner API and returns
+     * null only when the Host phase leaves `fetching` / `mcp-starting`.
+     *
+     * @param {{ t: (key: string) => string, api: { load: Function } }} props
+     *   injected locale translator and status client.
+     * @returns {object | null} React node.
+     */
+    function WolframMcpStatusToast(props) {
+      const { t, api } = props
+      const [state, setState] = React.useState(null)
+
+      React.useEffect(() => {
+        let cancelled = false
+        let inFlight = false
+        const load = async () => {
+          if (inFlight) return
+          inFlight = true
+          try {
+            const next = await api.load()
+            if (!cancelled) setState(next)
+          } catch {
+            // Keep the last known phase while the Host API is temporarily unavailable.
+          } finally {
+            inFlight = false
+          }
+        }
+        void load()
+        const timer = window.setInterval(load, 2000)
+        return () => {
+          cancelled = true
+          window.clearInterval(timer)
+        }
+      }, [api])
+
+      const phase = state?.phase
+      const text = phase === 'fetching'
+        ? t('toast.scanning')
+        : phase === 'mcp-starting'
+          ? t('toast.mcpStarting')
+          : null
+      if (text === null) return null
+      return h('div', { className: 'dwm-toast-layer' },
+        h('div', { className: 'dwm-toast', role: 'status', 'aria-live': 'polite' },
+          h('span', { className: 'dwm-spinner', 'aria-hidden': true }),
+          h('span', { className: 'dwm-toast-text' }, text),
+        ),
+      )
+    }
+
     const STYLE = `
       .dwm-section{display:flex;flex-direction:column;gap:16px;max-width:840px;padding:4px 0 28px;color:var(--dsw-alias-label-primary)}
       .dwm-header{display:flex;flex-direction:column;gap:6px}
@@ -406,6 +462,11 @@ window.__ModuleLoader__.load({
       .dwm-chips{display:flex;flex-wrap:wrap;gap:6px}
       .dwm-chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:12px}
       .dwm-footer{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);margin:0}
+      .dwm-toast-layer{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;align-items:center;gap:8px;max-width:calc(100vw - 32px);pointer-events:none}
+      .dwm-toast{display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 32px));padding:10px 14px;border-radius:var(--dsw-radius-md);border:.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-toast-bg,var(--dsw-alias-bg-layer-3));color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+      .dwm-spinner{width:14px;height:14px;flex:none;border-radius:50%;border:1.5px solid var(--dsw-alias-border-l2);border-top-color:var(--dsw-alias-brand-primary);animation:dwm-spin .9s linear infinite}
+      @keyframes dwm-spin{to{transform:rotate(360deg)}}
+      .dwm-toast-text{min-width:0;overflow-wrap:anywhere}
     `
 
     /**
@@ -450,6 +511,14 @@ window.__ModuleLoader__.load({
         name: 'settings.section.icon',
         id: SECTION_ID,
       }, WolframMcpIcon))
+
+      ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+        name: 'shell.overlay',
+        id: 'wolfram-mcp.status-toast',
+        order: 100,
+        locale: NS,
+        inject: () => ({ t, api }),
+      }, WolframMcpStatusToast))
     }
 
     return {
