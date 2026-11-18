@@ -417,7 +417,7 @@ Toast 在阶段进行期间一直显示，不做自动消失；当 Host 确认 M
 | 浏览器刷新/重新打开页面 | overlay 挂载后重新轮询 `/state`，按当前 phase 恢复显示或隐藏 |
 | 与设置页重复轮询 | 2 秒一次的本机 `/state` 请求成本很低；保持设置页现有 3 秒轮询，不重构其数据流，降低回归风险 |
 | Toast 遮挡交互 | `pointer-events: none`；仅显示信息，不提供按钮 |
-| 视觉与内置 Toast 不一致 | 复制现有 toast 的视觉语言（底部居中、圆角、细边框、主题 token）；不 require 内部组件 |
+| 视觉与内置 Toast 不一致 | 复制现有 toast 的视觉语言（圆角、细边框、主题 token），按用户要求改为右上角与浅色文字；不 require 内部组件 |
 | 首次安装已完成但用户后打开页面 | Host 已持久化 `mcpReadyAt`，`phase: ready`，不显示 Toast |
 | 升级后旧状态文件没有 `mcpReadyAt` | `normalizeState` 归一化为 null；下一次成功连接后补写 |
 | 首次下载耗时超过 `startupTimeoutMs` | mcp-client 的重连会继续；`mcpReadyAt` 只在真正 connected 后写入，Toast 保持到成功或失败 |
@@ -443,7 +443,7 @@ Toast 在阶段进行期间一直显示，不做自动消失；当 Host 确认 M
 - Client：
   - `client.js` 新增 `WolframMcpStatusToast`，注册到 `shell.overlay`，`id: wolfram-mcp.status-toast`、`order: 100`，每 2 秒读取 `/state`。
   - 无 `setTimeout`/自动消失逻辑；仅当 `phase` 为 `fetching` 或 `mcp-starting` 时渲染，阶段变化后返回 null。
-  - Toast 使用底部居中圆角浮层、主题 token、旋转 spinner；`pointer-events: none`，`role="status"` 与 `aria-live="polite"`。
+  - Toast 使用**右上角**圆角浮层（`top: 72px; right: 24px`），文字使用 `--dsw-alias-label-on-color` 浅色（背景为深色 `--dsw-alias-toast-bg`），主题 token、旋转 spinner；`pointer-events: none`，`role="status"` 与 `aria-live="polite"`。
   - 字典新增 `toast.scanning` 与 `toast.mcpStarting` 的中英文文本。
 - 测试：24 个测试全部通过。新增覆盖：`mcp-starting → connected` 事件将 `mcpReadyAt` 置位、`refreshing` 时 `phase=fetching`、失败状态 `phase=error`。
 - `npm run build` 全部检查通过。
