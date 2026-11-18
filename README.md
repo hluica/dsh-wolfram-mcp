@@ -150,6 +150,7 @@ npm run clean   # 清理构建产物
 - **查看原始配置**：同一页面的只读文本框显示 `state.json` 中 `config` 的格式化 JSON。
 - **查看状态文件路径**：页面“状态文件”一栏；也可直接查看 `$DSH_HOME/dsh-wolfram-mcp/state.json`。
 - **插件身份**：Loader entry id 与 bundle patch id 均为 `dsh-wolfram-mcp`；包名 `@local/dsh-wolfram-mcp`。
+- **图标**：插件使用红底白色多面 8 角星；Settings 导航使用同几何的单色简化星形。
 
 ## 相关文档
 

@@ -452,3 +452,45 @@ Toast 在阶段进行期间一直显示，不做自动消失；当 Host 确认 M
   - 重新连接后 `state.json` 写入 `mcpReadyAt: "2026-11-18T12:20:07.478Z"`；`list_mcp_resources` 返回 `WolframLanguage` 且 MCP 工具列表恢复。
   - 首次启动 Toast 在本次重启用中会出现一个短暂阶段（数据已缓存）；完整的长阶段提示需要删除 `state.json` 或全新安装后观察。
 - 限制：没有浏览器截图工具，Toast 的像素级位置/视觉未由我直接验收；Slot 注册、phase 状态与构建检查已确认。可请用户在全新安装或手动刷新时观察。
+
+# 插件与设置页图标设计
+
+## 2026-11-18 Wolfram 风格图标
+
+### 目的与范围
+
+- 为插件/组件提供一张类似 Wolfram 风格的图标：红色圆角底 + 白色多面星形。
+- 为 Settings → Wolfram MCP 导航行提供一张简化版图标：单色、16px 可读的星形剪影。
+- 用户提供的参考图仅用于设计比对，**不加入 Git 暂存/提交**；在新图标被验收后删除。
+- 不修改插件行为、接口或状态；本次仅替换 `icon.svg` 与 Client 内的 `WolframMcpIcon` 组件。
+
+### 可行性/设计依据
+
+- `dsh-doc` 的 `references/artwork.md` 要求图标自包含、无脚本/`<style>`/`<image>`/`foreignObject`，使用平面填充或短渐变，并能在行尺寸与明暗主题下识别；插件 Manager 负责外框显示。
+- 参考图是红色圆角底上的白色多面 spikey；本插件采用**原创的 8 角分层星形**，不复刻 Wolfram 商标几何，只保留红底白星的视觉语言。
+- 现有本地插件（`dsh-custom-css`、`dsh-font-settings` 等）的 `icon.svg` 都包含 64×64 圆角底；本次沿用这一本地惯例，使用 36×36 viewBox 的红底图标。
+- `icon.svg` 使用纯平面填充（红色底、白色外层星、浅灰内层星、红色中心小菱形），不使用 ImageMagick 内部渲染器不支持的渐变，确保多渲染器一致。
+- Settings 图标使用 `currentColor` 单色 8 角星与中心 evenodd 镂空，跟随设置导航的明暗主题和 active 状态。
+
+### 核心进路
+
+- `icon.svg`：`viewBox="0 0 36 36"`，红色圆角矩形（`rx=8`），白色 8 角星（外半径 14.5、内半径 6.2），叠加旋转 22.5° 的浅灰内层星与一个红色中心菱形，形成简化的 3D 多面感；无外部引用、无脚本/样式。
+- `client.js` 的 `WolframMcpIcon`：`viewBox="0 0 16 16"`，单色 8 角星路径 + 中心小菱形镂空（`fillRule/evenodd`），`fill="currentColor"`，保持 `size` 与 `active` 行为不变。
+- 预览：用 ImageMagick 将 `icon.svg` 渲染为 256×256 与 36×36；将 Settings 路径渲染在浅色/深色背景上，确认 16px 尺度下的识别度与镂空效果。
+
+### 问题与解决办法
+
+| 问题 | 处理 |
+|---|---|
+| 参考图是完整红底 app icon，而 dsh-doc 说不要画外框 | 用户明确要求 Wolfram 风格；本地插件也保留完整圆角底，因此保留红底，并在 README/记录中说明 |
+| 初版使用渐变底，ImageMagick 渲染为黑色 | 改为纯平面红色填充，保证各种 SVG 渲染器一致 |
+| 16px 下多面星细节会糊 | Settings 图标只保留单色 8 角星剪影 + 中心镂空，不画内部 facets |
+| 参考图文件名与用户描述不同 | 实际文件是 `wolfram icom.png`；只作为未跟踪参考，不提交，验收后删除 |
+| 设置图标需要跟随主题 | 使用 `currentColor` 与 `opacity`，不写死颜色 |
+
+### 实施记录
+
+- `icon.svg` 已替换为红底白色分层 8 角星；ImageMagick 预览确认 256px 与 36px 均可读，红底/白星对比清晰。
+- `client.js` 的 `WolframMcpIcon` 已替换为 16px 单色星形 + 中心镂空；浅色/深色预览均可读。
+- 参考图 `wolfram icom.png` 保持未跟踪状态，未加入本次提交；待用户验收后删除。
+- `npm run build` 重新执行（图标文件大小/布局检查）。

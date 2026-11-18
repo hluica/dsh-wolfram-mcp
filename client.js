@@ -353,7 +353,10 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Monochrome navigation icon for the settings section.
+     * Simplified monochrome star for the settings navigation row.
+     * Inherits the shell's current icon color; the center cutout hints at the
+     * faceted plugin mark without adding small details that vanish at 16px.
+     *
      * @param {{ size?: number, active?: boolean }} props - owner props.
      * @returns {object} React node.
      */
@@ -367,15 +370,11 @@ window.__ModuleLoader__.load({
         style: { display: 'block', opacity: active ? 1 : 0.72 },
       },
         h('path', {
-          d: 'M2.4 4.1 L5.3 12 L8 6.9 L10.7 12 L13.6 4.1',
-          fill: 'none',
-          stroke: 'currentColor',
-          strokeWidth: 1.5,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
+          d: 'M8.00 1.00 L9.26 4.95 L12.95 3.05 L11.05 6.74 L15.00 8.00 L11.05 9.26 L12.95 12.95 L9.26 11.05 L8.00 15.00 L6.74 11.05 L3.05 12.95 L4.95 9.26 L1.00 8.00 L4.95 6.74 L3.05 3.05 L6.74 4.95 Z M8.00 6.40 L8.53 7.47 L9.60 8.00 L8.53 8.53 L8.00 9.60 L7.47 8.53 L6.40 8.00 L7.47 7.47 Z',
+          fill: 'currentColor',
+          fillRule: 'evenodd',
+          clipRule: 'evenodd',
         }),
-        h('circle', { cx: 2.4, cy: 4.1, r: 1.1, fill: 'currentColor' }),
-        h('circle', { cx: 13.6, cy: 4.1, r: 1.1, fill: 'currentColor' }),
       )
     }
 
