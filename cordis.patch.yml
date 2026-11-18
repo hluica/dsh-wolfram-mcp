@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-wolfram-mcp
+      name: '@local/dsh-wolfram-mcp'

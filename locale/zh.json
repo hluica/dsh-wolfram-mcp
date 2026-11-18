@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Wolfram MCP",
+    "description": "从 Wolfram kernel 生成的持久化配置注册本地 Wolfram Language MCP 服务器，并管理随插件携带的 Wolfram Agent Skills。"
+  }
+}

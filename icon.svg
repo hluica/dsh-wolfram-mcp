@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Wolfram MCP">
+  <defs>
+    <linearGradient id="dwm-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2230"/>
+      <stop offset="1" stop-color="#0d1118"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#dwm-bg)"/>
+  <rect x="6" y="6" width="116" height="116" rx="23" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.5"/>
+  <path d="M28 42 L47 92 L64 58 L81 92 L100 42"
+        fill="none" stroke="#f2a33c" stroke-width="9"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#5cc8c8">
+    <circle cx="28" cy="42" r="7"/>
+    <circle cx="100" cy="42" r="7"/>
+    <circle cx="64" cy="58" r="5.5"/>
+  </g>
+  <g fill="none" stroke="#5cc8c8" stroke-opacity="0.55" stroke-width="2">
+    <path d="M34 46 L58 56"/>
+    <path d="M94 46 L70 56"/>
+  </g>
+</svg>

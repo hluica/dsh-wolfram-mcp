@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Wolfram MCP",
+    "description": "Register the local Wolfram Language MCP server from a persisted kernel-generated configuration and manage the bundled Wolfram agent skills."
+  }
+}
