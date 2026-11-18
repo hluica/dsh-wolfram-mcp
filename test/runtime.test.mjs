@@ -119,6 +119,12 @@ test('registers the persisted configuration, serves state, and removes its own c
     assert.equal(payload.result.mcpServers[0].status.toolCount, 7)
     assert.equal(payload.result.persisted, true)
 
+    runtime.performRefresh = async () => ({ ok: true })
+    const refreshed = fakeResponse()
+    await runtime.handleRequest({ method: 'POST', url: '/dsh-wolfram-mcp/api/refresh' }, refreshed)
+    assert.equal(refreshed.statusCode, 200)
+    assert.equal(readBody(refreshed).ok, true)
+
     const denied = fakeResponse()
     const unauthorized = new WolframMcpRuntime(
       { ...ctx, connection: { admit: () => ({ peer: { principal: { kind: 'user' } } }) } },

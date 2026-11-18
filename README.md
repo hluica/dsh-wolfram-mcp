@@ -115,7 +115,8 @@ npm run clean   # 清理构建产物
    - 若全局目录不可写，插件静默放弃复制；修复权限后重新启用。
 5. **MCP 服务器启动慢或失败**
    - Wolfram 首次启动会加载 paclet/索引，日志在 `$WOLFRAM_USERBASE/Logs/AgentTools/Output/`（生成配置的 `env` 中有 `WOLFRAM_USERBASE`）。
-   - 插件给 MCP 实例设置了 10 分钟 `startupTimeoutMs`；若仍失败，查看设置页的 MCP 状态与 DSH Host 日志。
+   - 首次下载 Chatbook 向量数据库可能需要约 10 分钟；插件给 MCP 实例设置了 10 分钟 `startupTimeoutMs`。若启动预算刚好耗尽，`mcp-client` 会按自身 reconnect 策略重连；下载文件已在磁盘上，通常重连后即可连接。后续启动使用缓存，会明显加快。
+   - 若仍失败，查看设置页的 MCP 状态与 DSH Host 日志。
 6. **完整清理**
    - 禁用插件会移除 MCP 注册与带标记的 skill 副本。
    - 手动删除 `$DSH_HOME/dsh-wolfram-mcp/` 可清除持久化配置；删除 `$DSH_HOME/skills/` 下带 `.dsh-wolfram-mcp.json` 的目录可清除残留副本。

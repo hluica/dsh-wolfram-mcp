@@ -331,12 +331,14 @@ src/wolframlanguage_mcp.json 测试夹具（运行时不用）
   - 状态文件 `~/.dsh/dsh-wolfram-mcp/state.json` 保留，`fetchedAt` 与 `lastAttemptAt` 均未改变。
   - 重新启用后，四个 skill 以新 token 重新复制并重新出现在 skill catalog；`wolfram-mcp` 设置页重新 active；Wolfram MCP 进程用持久化配置重新启动；状态文件的 `fetchedAt`/`lastAttemptAt` 保持 `2026-11-18T11:47:07Z` 不变，确认**没有自动重新获取配置**。
 - `settings.section.icon` 中 `id: wolfram-mcp` 的图标注册也处于 active。
-- MCP 服务器进程已启动（`/Applications/Wolfram.app/Contents/MacOS/wolfram -run …`），首次启动正在下载 Chatbook 向量数据库（`~/Library/Wolfram/Objects/Chatbook/VectorDatabases/15-0/*.zip.tmp`，总计约 270 MB）。截至记录时 mcp-client 仍处于连接中，工具列表尚未出现 `mcp__WolframLanguage__*`；该下载属于 Wolfram 首次预热，不是插件错误。禁用/重启用中断了第一次下载，第二次启动继续下载，未影响持久化配置。
+- MCP 服务器进程已启动（`/Applications/Wolfram.app/Contents/MacOS/wolfram -run …`）。首次启动下载 Chatbook 向量数据库约 10 分钟；下载完成后 mcp-client 成功连接，工具列表出现 `mcp__WolframLanguage__CodeInspector`、`ReadNotebook`、`SymbolDefinition`、`TestReport`、`WolframLanguageContext`、`WolframLanguageEvaluator`、`WriteNotebook`。
+- 实际调用 `mcp__WolframLanguage__WolframLanguageEvaluator` 执行 `1 + 1` 返回 `Out[1]= 2`，确认 MCP 工具可执行，而非仅注册。
+- 禁用/重启用中断了第一次下载，第二次启动继续下载；下载完成后连接成功，未影响持久化配置。
 - `Config.listConfigs` 显示该 entry 的 `status: absent`，含义是本插件没有 Config schema；entry 本身已挂载（state/skills/注册均已发生）。
 
 #### 已知运行时事项
 
-- 首次 Wolfram MCP 启动需要下载向量数据库，时间取决于网络；注册项已设置 `startupTimeoutMs: 600000`。若首次下载超过 10 分钟，mcp-client 会按自身 reconnect 策略重试，下载文件保留在磁盘，后续应继续/复用。
+- 本机首次 Wolfram MCP 启动需要下载 Chatbook 向量数据库（下载完成后目录约 460 MB），耗时约 10 分钟；注册项设置 `startupTimeoutMs: 600000` 处于临界，实际观察到下载完成后 mcp-client 重连并成功连接。文件已缓存，后续启动应显著加快；若其他慢网络机器频繁触发重连，可把 `MCP_SERVER_STARTUP_TIMEOUT_MS` 调到 20 分钟。
 - 若运行时验证必须重启 DSH，按 `AGENTS.md` 4.2 处理；本轮已通过 live profile 安装并观察到 Host/Client 两侧生效。
 - 禁用/重新启用仍需实测确认 MCP 工具撤除、Skills 撤除、状态文件保留且不重新生成；将在首次连接完成后补做。
 
